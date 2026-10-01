@@ -1,0 +1,54 @@
+# ---------- MATLAB ----------
+*.asv
+*.m~
+*.mex*
+*.mat.bak
+codegen/
+octave-workspace
+
+# ---------- Simulink ----------
+slprj/
+*.slxc
+*.autosave
+*.slx.r20*
+*.mdl.r20*
+*_ert_rtw/
+*_grt_rtw/
+*_rtw/
+sccprj/
+*.rtw
+*.tmw
+*.mk
+*.bat
+rtwtypes*.h
+build/
+
+# ---------- Arduino / embedded build outputs ----------
+*.hex
+*.elf
+*.bin
+*.eep
+*.map
+*.o
+*.obj
+*.lst
+
+# ---------- MATLAB Project (not used, replaced by setup_paths.m) ----------
+*.prj
+*.mlproj
+resources/project/
+
+# ---------- Autodesk Inventor ----------
+OldVersions/
+*.lck
+*.ipj.bak
+
+# ---------- Office lock files ----------
+~$*
+
+# ---------- OS / editor ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
