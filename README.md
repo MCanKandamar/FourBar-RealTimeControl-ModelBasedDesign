@@ -51,9 +51,8 @@ Real-time PID **position** and **velocity** control of a 1-DOF crank-rocker four
 2. In the MATLAB App the user clicks (or drags) on the drawn trajectory. The app snaps the click to the nearest point on the path and sends the target (x, y) to the Arduino.
 3. On the Arduino, the nearest LUT entry (Euclidean distance) gives the reference θ₂. A discrete PID controller then drives the gearmotor to that angle along the shortest way around.
 4. The PID gains (Kp, Ki, Kd), the control mode and the run/stop command are streamed from the app over UART, so the gains can be retuned **while the controller is running**.
-5. A lab motion-capture system tracks reflective markers on the coupler point to verify the real position.
 
-**Why it is interesting.** It is a complete, small mechatronics loop: mechanism synthesis → CAD and manufacturing → model-based controller design → embedded code generation → a custom real-time HMI with its own binary protocol. The mechanism moves **point to point** instead of rotating continuously, and a separate velocity mode regulates the crank speed.
+**Why it is interesting.** It is a complete, small mechatronics loop: mechanism synthesis → CAD and 3D printing → model-based controller design → embedded code generation → a custom real-time HMI with its own binary protocol. The mechanism moves **point to point** instead of rotating continuously, and a separate velocity mode regulates the crank speed.
 
 ## Features
 
@@ -63,7 +62,6 @@ Real-time PID **position** and **velocity** control of a 1-DOF crank-rocker four
 - **Animated GUI.** The current linkage configuration is redrawn from the encoder feedback, together with the reference path, the target marker and a live time plot of angle or speed.
 - **Robust serial link.** Framed binary packets (`0xAA … 0x55`), an XOR checksum on the feedback packet, buffer resynchronisation, and a link-loss indicator (*Error* lamp turns red after 1 s without data).
 - **PID reset.** A *Reset* button resets the PID controller's internal states on the Arduino.
-- **Motion-capture verification.** Reflective markers on the coupler point are tracked by the lab's motion-capture cameras.
 - **Simulation variants.** The Simulink model has `(sim)` variants: a DC-motor plant model plus a UDP link to `UI_UDP`, for desktop testing without hardware (see [Simulation mode](#simulation-mode-no-hardware)).
 
 ## System Architecture
@@ -79,7 +77,6 @@ flowchart LR
     MOT["131:1 gearmotor<br/>12 V"]
     MECH["Four-bar mechanism<br/>coupler point P"]
     ENC["64 CPR encoder"]
-    MOCAP["Motion capture<br/>cameras"]
 
     APP -- "UART: Kp, Ki, Kd, target x/y,<br/>target rpm, mode, run, reset" --> LUT
     LUT --> PID
@@ -87,7 +84,6 @@ flowchart LR
     MOT --- ENC
     ENC -- "A/B (D2, D3)" --> PID
     PID -. "UART: θ, ω, run state" .-> APP
-    MOCAP -. "tracks markers on P<br/>(verification)" .-> MECH
 ```
 
 ### Serial protocol
@@ -201,7 +197,7 @@ P depends only on θ₂, so the reachable targets form a single closed curve. So
 
   $$\theta = \text{counts}\cdot\frac{1}{64}\cdot 2\pi\cdot\frac{1}{102}\ \text{rad}$$
 
-  <!-- TODO: confirm the 1/102 factor (6528 counts per output revolution). A 131:1 gearbox with a 64 CPR encoder would suggest ≈ 8400 counts/rev; state whether 102 is an experimentally calibrated value or a different gear ratio. -->
+  The factor 1/102 is the value used in the model (6528 counts per crank revolution). Its derivation was not documented in the project.
 
   The speed is estimated by a first-order filtered backward difference, $\omega_k = a\,\frac{\theta_k - \theta_{k-1}}{T_s} + (1-a)\,\omega_{k-1}$, with $T_s = 0.01$ s and $a = 1$ in the stored model workspace (i.e. currently unfiltered).
 - **Timing.** Fixed-step solver, $T_s = 0.01$ s. Serial receive and transmit run at 0.05 s.
@@ -230,11 +226,9 @@ The active tab selects the mode (the `mode` byte in the packet). Both modes shar
 |---|---|---|
 | Microcontroller | Arduino Uno (target board set in the Simulink model) | 1 |
 | Gearmotor | 131:1 metal gearmotor, 37D × 73L mm, 12 V, 64 CPR magnetic encoder | 1 |
-| Motor driver | <!-- TODO: motor driver model --> TODO | 1 |
-| Power supply | 12 V <!-- TODO: supply model / current rating --> | 1 |
-| Mechanism | Crank, triangular coupler, rocker, base plate and motor mount (see [Overview](#overview)) <!-- TODO: material and manufacturing method --> | 1 set |
-| Reflective markers | For motion capture, mounted on the coupler point <!-- TODO: number and size --> | TODO |
-| Motion capture system | Laboratory cameras <!-- TODO: system name / model --> | — |
+| Motor driver | Custom-built driver board from the university lab (PWM + direction inputs) | 1 |
+| Power supply | 12 V DC | 1 |
+| Mechanism | 3D-printed crank, triangular coupler, rocker, base plate and motor mount (see [Overview](#overview)) | 1 set |
 
 ### Pin assignment (read from the Simulink model)
 
@@ -245,8 +239,6 @@ The active tab selects the mode (the `mode` byte in the packet). Both modes shar
 | Motor PWM | D5 (≈ 490 Hz) | Arduino *PWM* |
 | Motor direction | D9 | Arduino *Digital Output* |
 | Serial link to PC | Serial0 (USB), 9600 baud | *Serial Receive* / *Serial Transmit* |
-
-<!-- TODO: motor driver input pins (e.g. PWM/DIR/EN), encoder supply wiring and motor power wiring -->
 
 <p align="center">
   <img src="docs/images/hardware_wiring.jpg" alt="Arduino, motor driver and gearmotor wiring on the bench" width="420">
@@ -271,7 +263,8 @@ FourBar-RealTimeControl-ModelBasedDesign/
 │   └── kinematics/
 │       └── init_kinematics.m      # forward kinematics → 100-point LUT
 ├── simulink/
-│   └── realtime_controller.slx    # PID controller model for Arduino Uno
+│   ├── realtime_controller.slx    # PID controller model for Arduino Uno
+│   └── ControlMode.m              # control-mode enumeration used by the model
 ├── docs/
 │   └── images/                    # README figures
 └── media/
@@ -284,12 +277,11 @@ FourBar-RealTimeControl-ModelBasedDesign/
 
 | Software | Notes |
 |---|---|
-| MATLAB **R2025b** | The model and apps were saved with R2025b Update 5. Older releases are untested. <!-- TODO: verify minimum release --> |
+| MATLAB **R2025b** | The model and apps were saved with R2025b Update 5. Older releases are untested. |
 | Simulink | |
 | Simulink Support Package for Arduino Hardware | Encoder, PWM, Digital Output and Serial blocks; build & deploy |
 | Aerospace Toolbox | Used by the app's RPM gauge (`Aero.ui.control.RPMIndicator`) |
-| Instrument Control Toolbox | Only for [simulation mode](#simulation-mode-no-hardware) (UDP blocks and `udpport`) <!-- TODO: verify --> |
-| Other | <!-- TODO: verify whether Embedded Coder / Simulink Coder licences are required (model uses ert.tlc), and which product provides the Byte Pack / Byte Unpack blocks --> |
+| Instrument Control Toolbox | Only for [simulation mode](#simulation-mode-no-hardware): the model's UDP Send/Receive blocks come from `instrumentlib`, and the app uses `udpport` |
 
 ### Steps (hardware)
 
@@ -313,7 +305,7 @@ FourBar-RealTimeControl-ModelBasedDesign/
    - Toggle **Run** to enable the motor. The **Start/Stop** lamp is driven by the run state the Arduino echoes back: green = running, red = stopped. Toggle *Run* off to stop.
    - Gains can be changed at any time while running. *Reset* resets the PID states.
 
-> **Note on the `.mlapp` files.** `UI_Serial_exported.m` is newer than `UI_Serial.mlapp`: it has an improved close handler (timer and serial cleanup), and it reads the port from `config.m`. The `.mlapp` sources still contain the original hardcoded `COM9` / UDP ports. <!-- TODO: bring the .mlapp files in line with the exported versions in App Designer -->
+> **Note on the `.mlapp` files.** `UI_Serial_exported.m` is newer than `UI_Serial.mlapp`: it has an improved close handler (timer and serial cleanup), and it reads the port from `config.m`. The `.mlapp` sources still contain the original hardcoded `COM9` / UDP ports.
 
 > **Changing the geometry.** The LUT used on the Arduino lives in the **model workspace** (`Px_LUT`, `Py_LUT`, `theta2_LUT`, 100 points). `init_kinematics.m` regenerates the same arrays in the base workspace. Copy them into the model workspace (Model Explorer) after editing the link lengths, and update the constants in `FourBar_Visualizer_handle.m` to match.
 
@@ -326,7 +318,7 @@ The model's `Udp Read`, `Controller` and `Motor` blocks are *sim/codegen* varian
   <br><em>Model top level with the <code>(sim)</code> variants active.</em>
 </p>
 
-<!-- TODO: the (sim) variant references an enumeration `ControlMode` (PositionControl / SpeedControl) whose class definition is not in this repository; add ControlMode.m or document how simulation mode is started. -->
+The `(sim)` variant uses the enumeration `ControlMode` (`PositionControl` = 0, `SpeedControl` = 1), defined in [`simulink/ControlMode.m`](simulink/ControlMode.m) and put on the path by `setup_paths`. Simulation mode was tested during the project; `ControlMode.m` was added to the repository afterwards with the same values the app sends.
 
 ### Troubleshooting
 
@@ -353,26 +345,18 @@ The model's `Udp Read`, `Controller` and `Motor` blocks are *sim/codegen* varian
 
 The screenshots are from the project report (*"At any t time"*). They show the gains entered at that moment; they are not tuned final values.
 
-<!-- TODO: add quantitative results (e.g. rise time, overshoot, steady-state error) only if they were measured. -->
-<!-- TODO: motion-capture verification: no measurement data is included in this repository yet. Add the exported marker data under data/ and a plot comparing the measured coupler-point position with the LUT target. -->
+The results are qualitative: position and velocity control were demonstrated on the hardware, with live gain tuning from the app. Step-response metrics (rise time, overshoot, steady-state error) were not recorded.
 
 ## Team
 
-MEE428 Real-Time Control, Group 03.
+MEE428 Real-Time Control, Group 03: Hüseyin Kaya, Kutay Kırtaş, Müslüm Can Kandamar, Ömer Güzel and Eray Karagöz.
 
-| Name | GitHub | Role |
-|---|---|---|
-| Hüseyin Kaya | <!-- TODO: @username --> | <!-- TODO: role --> |
-| Kutay Kırtaş | <!-- TODO: @username --> | <!-- TODO: role --> |
-| Müslüm Can Kandamar | [@MCanKandamar](https://github.com/MCanKandamar) | <!-- TODO: role --> |
-| Ömer Güzel | <!-- TODO: @username --> | <!-- TODO: role --> |
-| Eray Karagöz | <!-- TODO: @username --> | <!-- TODO: role --> |
+- **Müslüm Can Kandamar** ([@MCanKandamar](https://github.com/MCanKandamar)): modeling and simulation, the Simulink controller and Arduino code generation, the MATLAB app (GUI and serial protocol), and testing.
+- The mechanism CAD design, 3D printing, project report and presentation were done together by the team.
 
 ## Acknowledgments
 
 - **MEE428 Real-Time Control**, İzmir Kâtip Çelebi University. The mechanism dimensions are from the Group 3 dataset provided for the course project.
-- Course instructor: <!-- TODO: instructor name -->
-- The university laboratory, for access to the motion-capture system.
 
 ## License
 
